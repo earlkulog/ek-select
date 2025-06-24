@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ek-select Demo</title>
+  <script src="ek-select.js"></script>
+</head>
+<body>
+  <ek-select id="test" name="mySelect"></ek-select>
+  <script>
+    const sel = document.getElementById('test');
+    // The ideal use of this element is getting the items from the server like key-value pair for example
+    /*
+      fetch('/store/?q=lookup').then(async a=>{
+        if(a.ok) {
+          // assuming json was returned
+          a.json().then(a=>{
+            for(let b of a) {
+              sel.addItem(a.text,a.value);
+            }
+          }
+        }
+      })
+    */
+    sel.addItem('Apple', 'apple');
+    sel.addItem('Banana', 'banana');
+    sel.addItem('Orange', 'orange');
+  </script>
+</body>
+</html>

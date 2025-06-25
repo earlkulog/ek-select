@@ -1,4 +1,5 @@
 'use strict';
+
 if(!document.querySelector('style[ek-select-def-css]')){
 	let css = `eksel-${Date.now()}-`;
 	css = '-' + css;
@@ -11,26 +12,27 @@ if(!document.querySelector('style[ek-select-def-css]')){
 	fn('ek-select{display:inline-flex;flex-direction:row;align-items:center;border-style:solid;1px;border:1px solid var(--bordercolor);padding-right:0;background-color:var(--bgcolor);color:var(--fgcolor)}');
 	fn('ek-select::after{margin-left:auto;height:100%;width:16px;font-family:materialicons;font-size:18px;font-weight:bold;display:flex;justify-content:center;align-items:center;content:"keyboard_arrow_down"}');
 	fn('ek-select>input{width:calc(100% - 16px);border:none;outline:none}');
-	fn('.eks-droplist{position:fixed;border: 1px solid var(--bordercolor);display:flex;flex-direction:column;overflow:auto;z-index:100;background-color:var(--bgcolor);color:var(--fgcolor);box-shadow: 0 5px 10px rgba(0,0,0,.7);}');
+	fn('.eks-droplist{overflow:auto;position:fixed;border: 1px solid var(--bordercolor);display:flex;flex-direction:column;overflow:auto;z-index:100;background-color:var(--bgcolor);color:var(--fgcolor);box-shadow: 0 5px 10px rgba(0,0,0,.7);}');
 	fn('.eks-droplist>*{padding:var(--itempaddingy) var(--itempaddingx);cursor:default;white-space:nowrap;flex-shrink:0}');
 	fn(`.eks-droplist>:hover{background-color:var(--hilite);color:var(--hilitetext)}`);
 	fn('.eks-droplist>[selected]{background-color:var(--selected);color:var(--selectedtext)}');
 	document.head.insertAdjacentElement('afterbegin',style);
 }
 class EkSelect extends HTMLElement {
-	#input;
-	#droplist;
-	#selectedIndex;
-	#form;
-	#id;
-	#usrpad;
-	#maxItems;
-	#internals;
-	#items=[];
+	#input
+	#droplist
+	#selectedIndex
+	#form
+	#id
+	#maxItems
+	#internals
+	#items=[]
 	#flags=0
-	#initVal;
-	#value;
-	static #counter=0;
+	#initVal
+	#value
+	#ownerState
+	#cy1st
+	#ignoreBlur
 
 	constructor() {
 		super();
@@ -75,11 +77,25 @@ class EkSelect extends HTMLElement {
 		this.#dispatchChange()
 		this.#updateValidity();
 	}
+	get #owner(){
+		if(!this.#ownerState) {
+			let a=document.querySelector('dialog:modal')
+			this.#ownerState=a&&a.contains(this)?a:!0
+		}
+		return this.#ownerState===!0?null:this.#ownerState
+	}
 	#dispatchChange=()=>this.#dispatchEvent('change',{bubbles:true,cancelable:!0})
 	#setHandlers=()=>{
 		let dropped;
 		const clickHandler=e=>{
-			if(e.target==this.#droplist)return;
+			if(e.target==this.#droplist){
+				this.#ignoreBlur=!0
+				const r=this.#droplist.getBoundingClientRect();
+				if (scrollbar.calcCCY(this.#droplist)<r.height && e.y >= r.bottom - scrollbar.size)return;
+				if (scrollbar.calcCCX(this.#droplist)<r.width && e.x >= r.right - scrollbar.size)return;
+				this.#ignoreBlur=!1
+				return
+			}
 			if(e.button==0){
 				let el=document.elementFromPoint(e.pageX,e.pageY);
 				if(this.#droplist.contains(el)){
@@ -95,7 +111,7 @@ class EkSelect extends HTMLElement {
 			dropped=false;
 			this.#droplist&&this.#droplist.remove();
 			this.setAttribute('aria-expanded', 'false');
-			window.removeEventListener('mousedown',clickHandler,true);
+			window.removeEventListener('mousedown',clickHandler,true)
 		},
 		populateItems=(f='',nl)=>{
 			let cur=this.selectedIndex,osel=this.#selectedIndex,nsel,count=0;
@@ -132,7 +148,7 @@ class EkSelect extends HTMLElement {
 			return count
 		},
 		drop=f=>{
-			const nolist=this.#droplist==null;
+			const nolist=this.#droplist===null||this.#droplist.children.length===0;
 			this.setAttribute('aria-expanded', 'true');
 			dropped=true;
 			let div=this.#droplist;
@@ -144,55 +160,63 @@ class EkSelect extends HTMLElement {
 				this.setAttribute('aria-controls', this.#id);
 			}
 
-			let indlg=false,owner=document.querySelector('dialog:modal')
-			indlg=owner&&owner.contains(this)
-			indlg||(owner=document.body)
-			if(populateItems(f,nolist)>0&&!div.isConnected)
-				owner.appendChild(div)
+			populateItems(f,nolist)
+			div.isConnected||(this.#owner||document.body).appendChild(div)
 
-			let r=this.getBoundingClientRect(),css = {
-				left: r.x,
-				top: r.bottom,
-				width: r.width,
+			if(!this.#cy1st) {
+				let dummy
+				if(div.children.length===0)
+					div.appendChild(dummy=createContext('<div>&nbsp;</div>').firstChild)
+				this.#cy1st=div.firstElementChild.offsetHeight
+				dummy?.remove()
 			}
-
-			if(indlg){
-				r=owner.getBoundingClientRect()
-				css.left-=r.x
-				css.top-=r.y
-			}
-
-			for (let c in css) {
-				div.style[c] = Math.round(css[c]) + 'px';
-			}
-
-			// div.style.font = getComputedStyle(this.#input).getPropertyValue('font');
-			let cy=div.offsetHeight,max=Math.max(1, Math.min(this.maxItems, div.children.length)),sample;
-			if (div.children.length == 0) {
-				div.appendChild((sample=createContent('<div>&nbsp;</div>').firstChild))
-			}
-			cy = div.firstElementChild.offsetHeight * max;
-			sample?.remove()
-			if (div.scrollWidth > div.offsetWidth)
-				cy += scrollbar.size;
-
-			css.height = cy + 2;
-
-			if (r.bottom + cy > window.innerHeight)
-				css.top = r.top - cy;
-			if (r.right > window.innerWidth)
-				css.left = window.innerWidth - r.width;
-			for (let c in css) {
-				div.style[c] = css[c] + 'px';
-			}
+			setDropdownPos()
 			window.addEventListener('mousedown',clickHandler,!0)
 			this.#selectedIndex==-1||this.#droplist.children[this.#selectedIndex]?.scrollIntoView(!1)
+		},
+		getXYOffset=()=>{
+			let x,y
+			if(this.#owner){
+				let z=this.#owner.getBoundingClientRect()
+				x=z.x
+				y=z.y
+			}
+			return{x:x??0,y:y??0}
+		},
+		calcPos=(r,rp,css,cssp,wp)=>{
+			let g1=Math.min(r[rp],css[cssp]),g2=window[wp]-css[cssp],dx=g1>g2?Math.max(0,r[rp]-g1):css[cssp],dy=Math.max(g1,g2)
+			if(this.#owner) {
+				r=this.#owner.getBoundingClientRect()
+				dx-=r[rp]
+			}
+			return{dx:dx,dy:dy}
+		},
+		setDropdownPos=()=>{
+			let r=this.getBoundingClientRect(),xy=getXYOffset(),css={
+				left: r.x-xy.x,
+				top: r.bottom-xy.y,
+				width: r.width,
+				height: this.#cy1st*Math.max(1,this.#droplist.children.length)+2
+			}
+			if(css.top+css.height>window.innerHeight) {
+				let p=calcPos(r,'top',css,'height','innerHeight')
+				css.top=p.dx
+				css.height=p.dy
+			}
+			if(css.left+css.width>window.innerWidth) {
+				let p=calcPos(r,'left',css,'width','innerWidth')
+				css.left=p.dx
+				css.width=p.dy
+			}
+			for (let c in css) {
+				this.#droplist.style[c] = Math.round(css[c]) + 'px';
+			}
 		},
 		handlers={
 			pointerdown:e=>{
 				e.preventDefault();
 				setTimeout(()=>this.#input.focus(), 0);
-				if(dropped) {
+				if(dropped){
 					close()
 				}
 				else if(e.x>=this.#input.getBoundingClientRect().right){
@@ -264,15 +288,19 @@ class EkSelect extends HTMLElement {
 					return;
 				}
 				this.#initVal=void 0
-				drop(this.#input.value);
-				// if(this.#ignorechange){
-				// 	this.#ignorechange=!1
-				// 	return
-				// }
-				// this.#dispatchChange()
+				let f=this.#input.value.trim()
+				if(!f)
+					close()
+				else
+					drop(f)
 			},
 			change:e=>e.target==this.#input&&e.preventDefault(),
-			focusout:e=>e.target==this.#input&&close(),
+			focusout:e=>{
+				if(this.#ignoreBlur)
+					this.#ignoreBlur=!1
+				else if(e.target==this.#input)
+					close()
+			},
 			focus:e=>e.target!=this.#input&&this.#input.focus()
 		}
 		for(let h in handlers)
@@ -297,9 +325,6 @@ class EkSelect extends HTMLElement {
 				}
 				break;
 			case 'style':
-				this.#usrpad = parseFloat(this.style.paddingRight);
-				if (isNaN(this.#usrpad))
-					this.#usrpad=0;
 				if(this.#droplist){
 					let cs=getComputedStyle(this),st=this.#droplist.style
 					for(let a of EkSelect.#cca){
@@ -326,7 +351,7 @@ class EkSelect extends HTMLElement {
 	get disabled(){return this.#input.disabled}
 	set disabled(v){this.#input.disabled=v}
 	get items(){
-		return this.#items
+		return [...this.#items]
 	}
 	get form() {
 		return this.#form;
@@ -373,18 +398,14 @@ class EkSelect extends HTMLElement {
 		this.required=this.getAttribute('required')!=null
 		this.#updateValidity()
 		if (this.#id)return
-		// this.#init=!0
-		// if (this.#id==void 0)this.#id=`ek-select-id${++EkSelect.#counter}`
-		this.#id=`ek-select-id${++EkSelect.#counter}`
-		this.#usrpad=parseFloat(this.style.paddingRight)
-		if (isNaN(this.#usrpad))
-			this.#usrpad = 0;
+		this.#id=`ek-select-id${Date.now()}`
 		this.setAttribute('tabindex', '0');
 		this.#rsch();
 	}
 	disconnectedCallback() {
 		this.#droplist && this.#droplist.remove();
 		this.#droplist = undefined;
+		this.#ownerState=this.#cy1st=null
 	}
 	formResetCallback() {
 		this.#selectedIndex = undefined;
@@ -445,16 +466,38 @@ class EkSelect extends HTMLElement {
 			this.#items.push({ text: n.textContent, value: val });
 		}
 	}
+	#shiftListIndices=(a,b=1)=>{
+		for(;a<this.#droplist.children.length;a++)
+			this.#droplist.children[a].listIndex+=b
+	}
+	#findItemByLi=a=>{
+		if(!this.#droplist)return -1
+		const b=this.#droplist.children
+		if(b.length==0) return -1
+		if(b.length==this.#items.length) return a
+		for(let c=0;c<b.length;c++) {
+			if(b[c].listIndex==a)
+				return c
+		}
+	}
 	#addItemToList=(i,o)=>{
-		if (this.#droplist == undefined)
+		if (this.#droplist==void 0)
 			return;
+		if(!this.#droplist.isConnected) {
+			this.#droplist.replaceChildren()
+			return
+		}
 		const a = document.createElement('div');
 		a.textContent = o.text;
 		if (i==-1) {
 			this.#droplist.appendChild(a);
 			i = this.#droplist.children.length;
+			a.listIndex = this.#items.length-1
 		}
 		else {
+			a.listIndex=i
+			i=this.#findItemByLi(i)
+			this.#shiftListIndices(i+1)
 			this.#droplist.insertBefore(a, this.#droplist.children[i]);
 		}
 		if (this.#input.value==o.text)
@@ -474,9 +517,37 @@ class EkSelect extends HTMLElement {
 		return r;
 	}
 	insertItem=(i,text,value,data)=>{
+		if (i<0||i>this.#items.length)
+		    throw new RangeError("Invalid index for insertItem");
 		const o = { text: text, value: value || text, data: data };
-		this.#items.splice(i, 0, o);
-		this.#addItemToList(i, o);
+		if(i==this.#items.length) {
+			this.#items.push(o)
+			this.#addItemToList(-1, o)
+		}
+		else{
+			this.#items.splice(i, 0, o);
+			this.#addItemToList(i, o)
+		}
+	}
+	removeItem=a=>{
+		if('number'!=typeof a) {
+			a=parseInt(a)
+		}
+		if(isNaN)
+			throw new TypeError('index')
+		const b=this.#items.length
+		if(a<0||a>=b)
+			throw new RangeError('index')
+		this.#items.splice(a,1)
+		if(this.#droplist) {
+			if(!this.#droplist.isConnected)
+				this.#droplist.innerHTML=''
+			else{
+				a=this.#findItemByLi(a)
+				this.#droplist[a].remove()
+				this.#shiftListIndices(a+1,-1)
+			}
+		}
 	}
 	find=f=>this.#items.find(f)
 	findIndex=f=>this.#items.findIndex(f)
